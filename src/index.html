@@ -49,10 +49,54 @@
       .mapbox-ctrl-compass button:hover {
         background-color: rgba(0, 0, 0, 0.05);
       }
+
+      .filter-ctrl {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1;
+        background: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+        font-family: sans-serif;
+      }
+
+      .filter-ctrl h3 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+      }
+
+      .filter-ctrl div {
+        margin-bottom: 5px;
+      }
+
+      .filter-ctrl label {
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
     <div id="map"></div>
+    <div class="filter-ctrl">
+      <h3>Points of Interest</h3>
+      <div>
+        <input type="radio" id="none" name="category" value="none" checked>
+        <label for="none">None</label>
+      </div>
+      <div>
+        <input type="radio" id="theater" name="category" value="Movie Theater">
+        <label for="theater">Movie Theaters</label>
+      </div>
+      <div>
+        <input type="radio" id="aquarium" name="category" value="Aquarium">
+        <label for="aquarium">Aquariums</label>
+      </div>
+      <div>
+        <input type="radio" id="museum" name="category" value="Museum">
+        <label for="museum">Museums</label>
+      </div>
+    </div>
     <script src="/main.js" type="module"></script>
   </body>
 </html>
