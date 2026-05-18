@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>San Francisco Streets</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0; /* Light background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: sans-serif;
+            overflow: hidden; /* Prevent scrolling if SVG is large */
+        }
+
+        #map-container {
+            width: 100%;
+            height: 100%;
+            max-width: 800px; /* Limit size for better viewing */
+            max-height: 800px;
+            background-color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* Add a subtle shadow */
+            border-radius: 8px; /* Slightly rounded corners */
+            position: relative; /* For positioning loading indicator */
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block; /* Remove default inline spacing */
+        }
+
+        /* Styles for different road types */
+        .highway-motorway, .highway-trunk {
+            stroke: #ff9999; /* Light red for major highways */
+            stroke-width: 3px;
+        }
+
+        .highway-primary {
+            stroke: #ffcc99; /* Light orange for primary roads */
+            stroke-width: 2px;
+        }
+
+        .highway-secondary, .highway-tertiary {
+            stroke: #ffffb3; /* Light yellow for secondary/tertiary */
+            stroke-width: 1.5px;
+        }
+
+        .highway-residential, .highway-unclassified, .highway-service {
+            stroke: #cccccc; /* Light gray for local roads */
+            stroke-width: 0.8px;
+        }
+
+        .highway-pedestrian, .highway-footway, .highway-cycleway {
+            stroke: #e6e6e6; /* Very light gray for paths */
+            stroke-width: 0.5px;
+            stroke-dasharray: 2,2; /* Dashed line for paths */
+        }
+
+        /* Base style for all lines */
+        path {
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Loading indicator styling */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            color: #666;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Style for displaying errors */
+        #error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #d32f2f;
+            text-align: center;
+            display: none; /* Hidden by default */
+            padding: 20px;
+            background-color: #ffebee;
+            border: 1px solid #ffcdd2;
+            border-radius: 4px;
+        }
+
+        #attribution {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.85);
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            color: #333;
+            border-radius: 4px;
+            pointer-events: auto;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        
+        #attribution a {
+            color: #0078A8;
+            text-decoration: none;
+        }
+        
+        #attribution a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map-container">
+        <div id="loading">
+            <div class="spinner"></div>
+            Fetching map data for San Francisco...
+        </div>
+        <div id="error-message"></div>
+        <svg id="map-svg" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="attribution">
+            Data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, ODbL
+        </div>
+    </div>
+
+    <script>
+        // Bounding box for San Francisco (approximate)
+        // Format for Overpass API: south, west, north, east (min_lat, min_lon, max_lat, max_lon)
+        const BBOX = "37.7081,-122.5150,37.8120,-122.3556";
+
+        // Overpass API URL
+        const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+
+        // Function to build the Overpass QL query
+        function buildQuery(bbox) {
+            // We request 'way' elements with 'highway' tags within the bounding box
+            return `
+                [out:json][timeout:25];
+                (
+                  way["highway"](${bbox});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+        }
+
+        // Simple equirectangular projection to map lat/lon to SVG coordinates
+        function project(lon, lat, minLon, maxLat, scaleX, scaleY) {
+            const x = (lon - minLon) * scaleX;
+            const y = (maxLat - lat) * scaleY; // Y axis is inverted in SVG
+            return { x, y };
+        }
+
+        async function fetchMapData() {
+            const query = buildQuery(BBOX);
+            try {
+                console.log("Fetching data from Overpass API...");
+                const response = await fetch(OVERPASS_URL, {
+                    method: 'POST',
+                    body: query,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log(`Received ${data.elements.length} elements.`);
+                return data;
+            } catch (error) {
+                console.error("Failed to fetch map data:", error);
+                showError("Failed to load map data. The Overpass API might be busy or unavailable. Please try again later.");
+                return null;
+            }
+        }
+
+        function showError(message) {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error-message');
+            if(loadingDiv) loadingDiv.style.display = 'none';
+            if(errorDiv) {
+                errorDiv.innerText = message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        async function renderMap() {
+            const data = await fetchMapData();
+            
+            if (!data) return; // Stop if data fetching failed
+
+            console.log("Processing data for rendering...");
+            const loadingDiv = document.getElementById('loading');
+            if(loadingDiv) loadingDiv.style.display = 'none'; // Hide loading indicator
+
+            const svg = document.getElementById('map-svg');
+            
+            // 1. Create a dictionary of nodes for fast coordinate lookup
+            const nodes = {};
+            
+            // Also determine the actual bounding box of the returned data to calculate scale
+            let minLon = Infinity, maxLon = -Infinity;
+            let minLat = Infinity, maxLat = -Infinity;
+
+            data.elements.forEach(element => {
+                if (element.type === 'node') {
+                    nodes[element.id] = { lon: element.lon, lat: element.lat };
+                    
+                    // Update bounding box bounds
+                    if (element.lon < minLon) minLon = element.lon;
+                    if (element.lon > maxLon) maxLon = element.lon;
+                    if (element.lat < minLat) minLat = element.lat;
+                    if (element.lat > maxLat) maxLat = element.lat;
+                }
+            });
+
+            console.log(`Found ${Object.keys(nodes).length} nodes.`);
+            console.log(`Data Bounding Box: Lon [${minLon}, ${maxLon}], Lat [${minLat}, ${maxLat}]`);
+
+            // 2. Calculate scaling factors for the SVG coordinate system (1000x1000 viewbox)
+            const svgWidth = 1000;
+            const svgHeight = 1000;
+            
+            // Adjust aspect ratio based on latitude to prevent distortion
+            // The length of a degree of longitude depends on the latitude
+            const avgLat = (minLat + maxLat) / 2;
+            const lonScaleFactor = Math.cos(avgLat * Math.PI / 180);
+
+            const lonDiff = maxLon - minLon;
+            const latDiff = maxLat - minLat;
+
+            // We need to fit both width and height within the 1000x1000 box
+            // maintaining aspect ratio
+            
+            // Unscaled aspect ratio
+            const dataRatio = (lonDiff * lonScaleFactor) / latDiff;
+            const svgRatio = svgWidth / svgHeight;
+
+            let scaleX, scaleY;
+            let xOffset = 0, yOffset = 0;
+
+            if (dataRatio > svgRatio) {
+                // Data is wider than SVG viewbox relative to aspect ratio
+                scaleX = svgWidth / lonDiff;
+                scaleY = (svgWidth / dataRatio) / latDiff;
+                yOffset = (svgHeight - (latDiff * scaleY)) / 2; // Center vertically
+            } else {
+                // Data is taller than SVG viewbox
+                scaleY = svgHeight / latDiff;
+                scaleX = (svgHeight * dataRatio) / (lonDiff * lonScaleFactor);
+                xOffset = (svgWidth - (lonDiff * scaleX)) / 2; // Center horizontally
+            }
+
+
+            // 3. Process 'way' elements (streets) and generate SVG paths
+            let pathCount = 0;
+            // Create a document fragment to append paths efficiently
+            const fragment = document.createDocumentFragment();
+
+            data.elements.forEach(element => {
+                if (element.type === 'way' && element.nodes && element.tags && element.tags.highway) {
+                    
+                    // Filter out very minor path types if desired to reduce clutter, 
+                    // but we'll include most for a detailed map
+                    const highwayType = element.tags.highway;
+                    
+                    let pathData = "";
+                    let isFirstNode = true;
+
+                    element.nodes.forEach(nodeId => {
+                        const node = nodes[nodeId];
+                        if (node) {
+                            const { x, y } = project(node.lon, node.lat, minLon, maxLat, scaleX, scaleY);
+                            // Apply offsets to center
+                            const finalX = x + xOffset;
+                            const finalY = y + yOffset;
+
+                            if (isFirstNode) {
+                                pathData += `M ${finalX.toFixed(2)} ${finalY.toFixed(2)} `;
+                                isFirstNode = false;
+                            } else {
+                                pathData += `L ${finalX.toFixed(2)} ${finalY.toFixed(2)} `;
+                            }
+                        }
+                    });
+
+                    if (pathData) {
+                        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                        pathEl.setAttribute("d", pathData);
+                        
+                        // Assign class based on highway type for CSS styling
+                        // e.g. "highway-residential", "highway-primary"
+                        // Clean up type names just in case they have spaces or weird characters
+                        const cleanType = highwayType.replace(/[^a-z0-9]/gi, '-');
+                        pathEl.setAttribute("class", `highway-${cleanType}`);
+                        
+                        fragment.appendChild(pathEl);
+                        pathCount++;
+                    }
+                }
+            });
+
+            console.log(`Appended ${pathCount} paths to SVG.`);
+            
+            // Append all paths to the SVG at once
+            svg.appendChild(fragment);
+        }
+
+        // Start the process when the script loads
+        renderMap();
+
+    </script>
+</body>
+</html>
