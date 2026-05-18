@@ -88,6 +88,13 @@ const queries = {
     >;
     out skel qt;
   `,
+  "data/city-limits.json": `
+    [bbox:${sanFrancisco}]
+    [out:json]
+    ;
+    way["natural"="coastline"];
+    out geom;
+  `,
 };
 
 for (const [path, query] of Object.entries(queries)) {
