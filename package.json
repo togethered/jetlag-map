@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "maplibre-gl": "^5.24.0"
   }
 }
