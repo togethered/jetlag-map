@@ -17,9 +17,15 @@ const files = {
     Bun.file("./node_modules/@mapbox-controls/ruler/src/index.css"),
 };
 
-const [bun, script, mode] = Bun.argv;
+const [, , mode = ""] = Bun.argv;
+const usage = `usage: bun run index.ts (serve|build)`;
 switch (mode) {
+  case "":
   case "serve": {
+    if (mode === "") {
+      console.warn("warn: Defaulting to serve mode.");
+      console.warn(usage);
+    }
     const server = Bun.serve({
       port: 3000,
       routes: Object.fromEntries(
@@ -49,7 +55,7 @@ switch (mode) {
     break;
   }
   default: {
-    console.error(`Usage: ${bun} run ${script} (serve|build)`);
+    console.error(usage);
     process.exit(1);
   }
 }
