@@ -1,4 +1,5 @@
 // Usage: bun run data/overpass-test.ts
+// Format JSON separately to your liking (I use prettier)
 
 // https://wiki.openstreetmap.org/wiki/Overpass_API
 const OVERPASS_API_URL = "https://overpass-api.de/api/interpreter";
@@ -10,7 +11,7 @@ type OverpassElement = {
   type: "relation";
 };
 
-function query(query: string) {
+function queryOverpass(query: string) {
   return fetch(OVERPASS_API_URL, {
     method: "POST",
     body: new URLSearchParams({ data: query }),
@@ -36,62 +37,64 @@ const sanFrancisco = [
   37.816301033516325, -122.35772673478483,
 ].join(",");
 
-Bun.write(
-  "data/train-lines.json",
-  JSON.stringify(
-    await query(`
-      [bbox:${sanFrancisco}]
-      [out:json]
-      ;
-      (
-        relation["type"="route"]["route"~"train|subway|light_rail"];
-      );
-      out geom;
-    `)
-  )
-);
-console.error("wrote data/train-lines.json");
+const queries = {
+  "data/train-lines.json": `
+    [bbox:${sanFrancisco}]
+    [out:json]
+    ;
+    (
+      relation["type"="route"]["route"~"train|subway|light_rail"];
+    );
+    out geom;
+  `,
+  "data/train-stations.json": `
+    [bbox:${sanFrancisco}]
+    [out:json]
+    ;
+    (
+      node["railway"="station"];
+      node["railway"="tram_stop"];
+      node["station"="subway"];
+      node["public_transport"="station"];
+    );
+    out body;
+  `,
+  "data/poi.json": `
+    [bbox:${sanFrancisco}]
+    [out:json]
+    ;
+    (
+      node["tourism"="zoo"];
+      way["tourism"="zoo"];
+      node["tourism"="aquarium"];
+      way["tourism"="aquarium"];
+      node["amenity"="library"];
+      way["amenity"="library"];
+      node["tourism"="museum"];
+      way["tourism"="museum"];
+      node["amenity"="hospital"];
+      way["amenity"="hospital"];
+    );
+    out center;
+  `,
+  "data/streets.json": `
+    [bbox:${sanFrancisco}]
+    [out:json]
+    ;
+    (
+      way["highway"];
+    );
+    out body;
+    >;
+    out skel qt;
+  `,
+};
 
-Bun.write(
-  "data/train-stations.json",
-  JSON.stringify(
-    await query(`
-      [bbox:${sanFrancisco}]
-      [out:json]
-      ;
-      (
-        node["railway"="station"];
-        node["railway"="tram_stop"];
-        node["station"="subway"];
-        node["public_transport"="station"];
-      );
-      out body;
-    `)
-  )
-);
-console.error("wrote data/train-stations.json");
-
-Bun.write(
-  "data/poi.json",
-  JSON.stringify(
-    await query(`
-      [bbox:${sanFrancisco}]
-      [out:json]
-      ;
-      (
-        node["tourism"="zoo"];
-        way["tourism"="zoo"];
-        node["tourism"="aquarium"];
-        way["tourism"="aquarium"];
-        node["amenity"="library"];
-        way["amenity"="library"];
-        node["tourism"="museum"];
-        way["tourism"="museum"];
-        node["amenity"="hospital"];
-        way["amenity"="hospital"];
-      );
-      out center;
-    `)
-  )
-);
-console.error("wrote data/poi.json");
+for (const [path, query] of Object.entries(queries)) {
+  if (await Bun.file(path).exists()) {
+    console.warn(`${path}: skipping (delete to regenerate)`);
+  } else {
+    await Bun.write(path, JSON.stringify(await queryOverpass(query)) + "\n");
+    console.warn(`${path}: written`);
+  }
+}
