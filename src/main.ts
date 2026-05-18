@@ -10,10 +10,10 @@ const map = new maplibregl.Map({
 });
 
 // Add Compass Control
-map.addControl(new CompassControl(), 'bottom-right');
+map.addControl(new CompassControl() as any, 'top-right');
 
 // Add Ruler Control
-map.addControl(new RulerControl(), 'bottom-right');
+map.addControl(new RulerControl() as any, 'bottom-right');
 
 // Ruler Events
 map.on('ruler.on', () => console.log('Ruler activated'));

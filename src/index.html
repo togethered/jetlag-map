@@ -8,8 +8,46 @@
     <link href="/css/compass.css" rel="stylesheet" />
     <link href="/css/ruler.css" rel="stylesheet" />
     <style>
-      body { margin: 0; }
-      #map { height: 100vh; width: 100vw; }
+      body {
+        margin: 0;
+      }
+    
+      #map {
+        height: 100vh;
+        width: 100vw;
+      }
+    
+      .mapbox-ctrl-ruler,
+      .mapbox-ctrl-compass {
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+        margin: 10px 10px 0 0;
+        float: right;
+        clear: both;
+        pointer-events: auto;
+      }
+    
+      .mapbox-ctrl-ruler button,
+      .mapbox-ctrl-compass button {
+        width: 29px;
+        height: 29px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        outline: none;
+        border: 0;
+        box-sizing: border-box;
+        background-color: transparent;
+        cursor: pointer;
+        font-size: 16px;
+      }
+    
+      .mapbox-ctrl-ruler button:hover,
+      .mapbox-ctrl-compass button:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
     </style>
   </head>
   <body>
