@@ -24,10 +24,15 @@
       #paths {
         stroke: blue;
       }
+      #streets {
+        stroke: grey;
+        stroke-width: 0.5;
+      }
     </style>
   </head>
   <body>
     <svg xmlns="http://www.w3.org/2000/svg">
+      <path id="streets" />
       <path id="paths" />
     </svg>
     <script type="module">
@@ -62,10 +67,34 @@
         .then((data) =>
           data.elements
             .values()
-            .filter((element) => element.geometry)
+            .filter((element) => element.geometry?.length)
             .map((element) => element.geometry.map(latLongToPixel))
             .toArray()
         );
+
+      const streets = await fetch("./streets.json")
+        .then((r) => r.json())
+        .then((data) => data.elements);
+      const streetNodeMap = new Map(
+        streets
+          .values()
+          .filter((element) => element.type === "node")
+          .map((element) => [element.id, element])
+      );
+      const streetPaths = streets
+        .values()
+        .filter(
+          (element) =>
+            element.type === "way" &&
+            element.nodes?.length &&
+            element.tags?.highway
+        )
+        .map((element) =>
+          element.nodes.map((nodeId) =>
+            latLongToPixel(streetNodeMap.get(nodeId))
+          )
+        )
+        .toArray();
 
       const width = window.innerWidth;
       const height = window.innerHeight;
@@ -92,24 +121,26 @@
         y: ((limits.y.min + limits.y.max) / 2) * scale - height / 2,
       };
 
+      const pathsToPath = (paths) =>
+        paths
+          .map((geometry) =>
+            geometry
+              .map(
+                (coord, i) =>
+                  `${i === 0 ? "M" : "L"}${coord.x * scale - offset.x} ${
+                    coord.y * scale - offset.y
+                  }`
+              )
+              .join("")
+          )
+          .join("");
+
       document
         .getElementById("paths")
-        .setAttributeNS(
-          null,
-          "d",
-          cityLimits
-            .map((geometry) =>
-              geometry
-                .map(
-                  (coord, i) =>
-                    `${i === 0 ? "M" : "L"}${coord.x * scale - offset.x} ${
-                      coord.y * scale - offset.y
-                    }`
-                )
-                .join("")
-            )
-            .join("")
-        );
+        .setAttributeNS(null, "d", pathsToPath(cityLimits));
+      document
+        .getElementById("streets")
+        .setAttributeNS(null, "d", pathsToPath(streetPaths));
     </script>
   </body>
 </html>
