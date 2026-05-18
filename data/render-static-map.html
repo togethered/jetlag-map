@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>render static map</title>
+    <meta name="description" content="render static map" />
+
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        display: flex;
+      }
+      svg {
+        width: 100%;
+        height: 100%;
+        fill: none;
+      }
+      #paths {
+        stroke: blue;
+      }
+    </style>
+  </head>
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg">
+      <path id="paths" />
+    </svg>
+    <script type="module">
+      if (window.location.protocol === "file:") {
+        alert("please serve this on http server");
+      }
+
+      /**
+       * https://github.com/SheepTester/ucsd-classrooms/blob/main/src/lib/locations.ts
+       */
+      function latLongToPixel({ lat, lon }) {
+        return {
+          x: lon / 180 + 1,
+          y: -(
+            Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI +
+            1
+          ),
+        };
+      }
+      function extremes(iterable) {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const value of iterable) {
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+        }
+        return { min, max };
+      }
+
+      const cityLimits = await fetch("./city-limits.json")
+        .then((r) => r.json())
+        .then((data) =>
+          data.elements
+            .values()
+            .filter((element) => element.geometry)
+            .map((element) => element.geometry.map(latLongToPixel))
+            .toArray()
+        );
+
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const limits = {
+        x: extremes(
+          cityLimits
+            .values()
+            .flatMap((geometry) => geometry)
+            .map(({ x }) => x)
+        ),
+        y: extremes(
+          cityLimits
+            .values()
+            .flatMap((geometry) => geometry)
+            .map(({ y }) => y)
+        ),
+      };
+      const scale = Math.min(
+        width / (limits.x.max - limits.x.min),
+        height / (limits.y.max - limits.y.min)
+      );
+      const offset = {
+        x: ((limits.x.min + limits.x.max) / 2) * scale - width / 2,
+        y: ((limits.y.min + limits.y.max) / 2) * scale - height / 2,
+      };
+
+      document
+        .getElementById("paths")
+        .setAttributeNS(
+          null,
+          "d",
+          cityLimits
+            .map((geometry) =>
+              geometry
+                .map(
+                  (coord, i) =>
+                    `${i === 0 ? "M" : "L"}${coord.x * scale - offset.x} ${
+                      coord.y * scale - offset.y
+                    }`
+                )
+                .join("")
+            )
+            .join("")
+        );
+    </script>
+  </body>
+</html>
