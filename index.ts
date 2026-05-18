@@ -15,6 +15,7 @@ const files = {
     Bun.file("./node_modules/@mapbox-controls/compass/src/index.css"),
   "css/ruler.css": () =>
     Bun.file("./node_modules/@mapbox-controls/ruler/src/index.css"),
+  "/css/export.css": () => Bun.file("./node_modules/@watergis/maplibre-gl-export/dist/maplibre-gl-export.css"),
 };
 
 const [, , mode = ""] = Bun.argv;
