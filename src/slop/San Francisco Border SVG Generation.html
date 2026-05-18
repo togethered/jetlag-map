@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>San Francisco Silhouette</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: #f8fafc; /* Tailwind slate-50 */
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        #map-container {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 1 / 1;
+            padding: 2rem;
+            box-sizing: border-box;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.2)); /* subtle glow */
+        }
+
+        .sf-boundary {
+            fill: #1e293b; /* Tailwind slate-800 */
+            stroke: #38bdf8; /* Tailwind sky-400 */
+            stroke-width: 0.0005; /* Will be scaled based on coordinate system */
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            transition: all 0.3s ease;
+        }
+
+        .sf-boundary:hover {
+            fill: #334155; /* Tailwind slate-700 */
+            stroke: #7dd3fc; /* Tailwind sky-300 */
+        }
+
+        #loading {
+            position: absolute;
+            font-size: 1.2rem;
+            color: #94a3b8; /* Tailwind slate-400 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #334155;
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #error-message {
+            color: #ef4444; /* Tailwind red-500 */
+            text-align: center;
+            padding: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="text-center mb-6">
+        <h1 class="text-3xl font-bold tracking-tight text-white mb-2">San Francisco</h1>
+        <p class="text-slate-400">City Border Silhouette generated from OpenStreetMap</p>
+    </div>
+
+    <div id="map-container">
+        <div id="loading">
+            <div class="spinner"></div>
+            <span>Fetching OpenStreetMap Data...</span>
+        </div>
+        <div id="error-message"></div>
+        <!-- SVG will be injected here -->
+    </div>
+
+    <div class="text-slate-500 text-sm mt-8 pb-4">
+        Data © <a href="https://www.openstreetmap.org/copyright" class="text-sky-400 hover:underline" target="_blank">OpenStreetMap</a> contributors
+    </div>
+
+    <script>
+        // Overpass QL query to get ONLY the coastline within SF's bounding box
+        // The southern limit is set precisely to the SF southern border (37.7083)
+        const overpassQuery = `
+            [out:json][timeout:25];
+            way["natural"="coastline"](37.7083,-122.515,37.815,-122.350);
+            out geom;
+        `;
+
+        const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+
+        const container = document.getElementById('map-container');
+        const loading = document.getElementById('loading');
+        const errorMessage = document.getElementById('error-message');
+
+        async function fetchSFBoundary() {
+            try {
+                const response = await fetch(overpassUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                processOSMData(data);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                showError("Failed to load map data. The Overpass API might be busy. Please try again later.");
+            }
+        }
+
+        function processOSMData(data) {
+            if (!data.elements || data.elements.length === 0) {
+                showError("No data returned for San Francisco.");
+                return;
+            }
+
+            let rawPaths = [];
+            const MIN_LAT = 37.7083; // Exact SF southern border
+            
+            // Extract geometries, clamping the southern end exactly to the border
+            data.elements.forEach(way => {
+                if (way.geometry) {
+                    let currentPath = [];
+                    way.geometry.forEach((pt, index, arr) => {
+                        const isInside = pt.lat >= MIN_LAT;
+
+                        if (isInside) {
+                            // If entering from the south, interpolate the exact entry point
+                            if (index > 0) {
+                                const prevPt = arr[index - 1];
+                                if (prevPt.lat < MIN_LAT) {
+                                    const t = (MIN_LAT - prevPt.lat) / (pt.lat - prevPt.lat);
+                                    const interpLon = prevPt.lon + t * (pt.lon - prevPt.lon);
+                                    currentPath.push([interpLon, MIN_LAT]);
+                                }
+                            }
+                            currentPath.push([pt.lon, pt.lat]);
+                        } else {
+                            // If exiting to the south, interpolate the exact exit point
+                            if (index > 0 && currentPath.length > 0) {
+                                const prevPt = arr[index - 1];
+                                const t = (MIN_LAT - prevPt.lat) / (pt.lat - prevPt.lat);
+                                const interpLon = prevPt.lon + t * (pt.lon - prevPt.lon);
+                                currentPath.push([interpLon, MIN_LAT]);
+
+                                rawPaths.push(currentPath);
+                                currentPath = [];
+                            }
+                        }
+                    });
+                    if (currentPath.length > 0) {
+                        rawPaths.push(currentPath);
+                    }
+                }
+            });
+
+            // Stitch broken ways together into continuous paths
+            let stitchedPaths = [];
+            while (rawPaths.length > 0) {
+                let current = rawPaths.shift();
+                let added = true;
+                while (added) {
+                    added = false;
+                    for (let i = 0; i < rawPaths.length; i++) {
+                        let p = rawPaths[i];
+                        const threshold = 0.001; // ~111 meters to bridge any small mapping gaps
+
+                        // Check distances between all endpoints
+                        if (dist(current[current.length - 1], p[0]) < threshold) {
+                            current = current.concat(p.slice(1));
+                            rawPaths.splice(i, 1); added = true; break;
+                        } else if (dist(current[current.length - 1], p[p.length - 1]) < threshold) {
+                            current = current.concat(p.slice().reverse().slice(1));
+                            rawPaths.splice(i, 1); added = true; break;
+                        } else if (dist(current[0], p[p.length - 1]) < threshold) {
+                            current = p.concat(current.slice(1));
+                            rawPaths.splice(i, 1); added = true; break;
+                        } else if (dist(current[0], p[0]) < threshold) {
+                            current = p.slice().reverse().concat(current.slice(1));
+                            rawPaths.splice(i, 1); added = true; break;
+                        }
+                    }
+                }
+                stitchedPaths.push(current);
+            }
+
+            if (stitchedPaths.length === 0) {
+                showError("Could not process boundary data.");
+                return;
+            }
+
+            // The longest path is the main peninsula coastline
+            stitchedPaths.sort((a, b) => b.length - a.length);
+            const mainPath = stitchedPaths[0];
+
+            // Convert coordinates to correct Mercator aspect ratio & flip Y axis
+            const meanLat = 37.75;
+            const lonScale = Math.cos(meanLat * Math.PI / 180);
+
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            const projectedPath = mainPath.map(pt => {
+                const x = pt[0] * lonScale;
+                const y = -pt[1]; // Invert Y axis here so north is up
+                
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                
+                return [x, y];
+            });
+
+            generateSVG(projectedPath, minX, maxX, minY, maxY);
+        }
+
+        function dist(p1, p2) {
+            const dx = p1[0] - p2[0];
+            const dy = p1[1] - p2[1];
+            return Math.sqrt(dx*dx + dy*dy);
+        }
+
+        function generateSVG(projectedPath, minX, maxX, minY, maxY) {
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const margin = Math.max(width, height) * 0.05;
+            
+            const viewBox = `${minX - margin} ${minY - margin} ${width + margin*2} ${height + margin*2}`;
+
+            // Build the path string. The 'Z' at the end will automatically draw 
+            // the straight southern border connecting the east and west coastlines!
+            let pathData = "";
+            if (projectedPath.length > 0) {
+                pathData += `M ${projectedPath[0][0]} ${projectedPath[0][1]} `;
+                for(let i=1; i<projectedPath.length; i++) {
+                    pathData += `L ${projectedPath[i][0]} ${projectedPath[i][1]} `;
+                }
+                pathData += "Z";
+            }
+            
+            const dynamicStrokeWidth = Math.max(width, height) * 0.002;
+
+            let svgContent = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
+                    <path class="sf-boundary" d="${pathData}" style="stroke-width: ${dynamicStrokeWidth}; fill-rule: evenodd;" />
+                </svg>
+            `;
+
+            loading.style.display = 'none';
+            container.innerHTML += svgContent;
+        }
+
+        function showError(msg) {
+            loading.style.display = 'none';
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+        }
+
+        // Start the process
+        fetchSFBoundary();
+    </script>
+</body>
+</html>
