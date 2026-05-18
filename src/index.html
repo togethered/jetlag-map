@@ -3,38 +3,55 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jetlag Map</title>
-    <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css' type='text/css' />
+    <title>Bun Map</title>
+    <link href="/css/maplibre-gl.css" rel="stylesheet" />
+    <link href="/css/compass.css" rel="stylesheet" />
+    <link href="/css/ruler.css" rel="stylesheet" />
     <style>
-      body { margin: 0; }
-      #map { height: 100vh; width: 100vw; }
+      body {
+        margin: 0;
+      }
+    
+      #map {
+        height: 100vh;
+        width: 100vw;
+      }
+    
+      .mapbox-ctrl-ruler,
+      .mapbox-ctrl-compass {
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+        margin: 10px 10px 0 0;
+        float: right;
+        clear: both;
+        pointer-events: auto;
+      }
+    
+      .mapbox-ctrl-ruler button,
+      .mapbox-ctrl-compass button {
+        width: 29px;
+        height: 29px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        outline: none;
+        border: 0;
+        box-sizing: border-box;
+        background-color: transparent;
+        cursor: pointer;
+        font-size: 16px;
+      }
+    
+      .mapbox-ctrl-ruler button:hover,
+      .mapbox-ctrl-compass button:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js'></script>
-    <script>
-      const map = new maplibregl.Map({
-          container: 'map',
-          style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=4F7xYJRpkPdD3qSM9UoZ',
-          center: [-122.420679, 37.772537], // San Francisco
-          zoom: 12
-      });
-
-
-var Draw = new MapboxDraw();
-
-// Map#addControl takes an optional second argument to set the position of the control.
-// If no position is specified the control defaults to `top-right`. See the docs
-// for more details: https://docs.mapbox.com/mapbox-gl-js/api/#map#addcontrol
-
-map.addControl(Draw, 'top-left');
-
-map.on('load', function() {
-  // ALL YOUR APPLICATION CODE
-});
-    </script>
+    <script src="/main.js" type="module"></script>
   </body>
 </html>

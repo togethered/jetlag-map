@@ -10,6 +10,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@mapbox-controls/compass": "^3.0.0",
+    "@mapbox-controls/ruler": "^3.0.0",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "maplibre-gl": "^5.24.0"
   }
