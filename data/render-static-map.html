@@ -58,6 +58,11 @@
           fill: red;
         }
       }
+      #stations circle {
+        r: 2px;
+        stroke-opacity: 0.8;
+        stroke: white;
+      }
     </style>
   </head>
   <body>
@@ -66,6 +71,7 @@
       <path id="streets" />
       <path id="city-limits" />
       <g id="poi"></g>
+      <g id="stations"></g>
     </svg>
     <script type="module">
       if (window.location.protocol === "file:") {
@@ -163,6 +169,21 @@
             )
         )
       );
+
+      const stationsFragment = document.createDocumentFragment();
+      for (const element of await fetch("./train-stations.json")
+        .then((r) => r.json())
+        .then((data) => data.elements)) {
+        const circ = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "circle"
+        );
+        const { x, y } = latLongToPixel(element);
+        circ.setAttributeNS(null, "cx", x * scale - offset.x);
+        circ.setAttributeNS(null, "cy", y * scale - offset.y);
+        stationsFragment.append(circ);
+      }
+      document.getElementById("stations").append(stationsFragment);
 
       const poiFragment = document.createDocumentFragment();
       for (const element of await fetch("./poi.json")
