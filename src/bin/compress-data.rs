@@ -1,5 +1,5 @@
 //! ```
-//! cargo run --bin compress-data
+//! cargo run --release --bin compress-data
 //! ```
 
 use std::{collections::HashMap, error::Error};

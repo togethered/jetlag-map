@@ -83,9 +83,13 @@
        */
       function latLongToPixel({ lat, lon }) {
         return {
-          x: lon / 180 + 1,
+          // fround to see what happens with f32 precision
+          x: Math.fround(lon) / 180 + 1,
           y: -(
-            Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI +
+            Math.log(
+              Math.tan(Math.PI / 4 + (Math.fround(lat) * Math.PI) / 360)
+            ) /
+              Math.PI +
             1
           ),
         };
