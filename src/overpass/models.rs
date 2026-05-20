@@ -16,15 +16,5 @@ pub struct Station {
 pub struct StationTags {
     pub name: String,
     /// `None` in only one case (Red & White Fleet), which is a ferry station
-    pub network: Option<StationNetwork>,
-}
-
-#[derive(Debug, Deserialize, Hash, Eq, PartialEq)]
-pub enum StationNetwork {
-    Muni,
-    Caltrain,
-    #[serde(rename = "BART")]
-    Bart,
-    #[serde(rename = "San Francisco Bay Ferry")]
-    Ferry,
+    pub network: Option<String>,
 }
