@@ -1,7 +1,10 @@
-use std::{error::Error, fs::File, path::Path};
+use std::{error::Error, fs::File, io::BufReader, path::Path};
 
 use reqwest::{blocking::Client, header::USER_AGENT};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::from_reader;
+
+use crate::overpass::models::OverpassResult;
 
 static OVERPASS_API_URL: &'static str = "https://overpass-api.de/api/interpreter";
 
@@ -22,7 +25,11 @@ impl Ensurer {
     }
 
     /// Writes the results of `query` to `file`. Skips if `file` exists.
-    pub fn ensure(&self, file: &str, query: &str) -> Result<(), Box<dyn Error>> {
+    pub fn ensure<'a>(
+        &self,
+        file: &'a str,
+        query: &str,
+    ) -> Result<EnsuredFile<'a>, Box<dyn Error>> {
         if Path::new(file).exists() {
             eprintln!("Using cached result in {file} (delete to regenerate)");
         } else {
@@ -34,6 +41,16 @@ impl Ensurer {
                 .copy_to(&mut File::create(file)?)?;
             eprintln!("Cached result to {file}");
         }
-        Ok(())
+        Ok(EnsuredFile { path: file })
+    }
+}
+
+pub struct EnsuredFile<'a> {
+    path: &'a str,
+}
+
+impl EnsuredFile<'_> {
+    pub fn read<T: for<'a> Deserialize<'a>>(&self) -> Result<OverpassResult<T>, Box<dyn Error>> {
+        Ok(from_reader(BufReader::new(File::open(self.path)?))?)
     }
 }
