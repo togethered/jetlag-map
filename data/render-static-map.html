@@ -8,6 +8,9 @@
     <meta name="description" content="render static map" />
 
     <style>
+      :root {
+        color-scheme: dark;
+      }
       html,
       body {
         height: 100%;
@@ -21,16 +24,39 @@
         height: 100%;
         fill: none;
       }
-      #paths {
+      #city-limits {
         stroke: blue;
       }
       #streets {
         stroke: grey;
+        stroke-opacity: 0.5;
         stroke-width: 0.5;
       }
       #train-lines {
         stroke: red;
         stroke-width: 1.5;
+      }
+      #poi circle {
+        fill: grey;
+        r: 3px;
+
+        &[data-tourism="zoo"] {
+          fill: lime;
+          r: 6px;
+        }
+        &[data-tourism="aquarium"] {
+          fill: cyan;
+          r: 6px;
+        }
+        &[data-amenity="library"] {
+          fill: magenta;
+        }
+        &[data-tourism="museum"] {
+          fill: orange;
+        }
+        &[data-amenity="hospital"] {
+          fill: red;
+        }
       }
     </style>
   </head>
@@ -38,7 +64,8 @@
     <svg xmlns="http://www.w3.org/2000/svg">
       <path id="train-lines" />
       <path id="streets" />
-      <path id="paths" />
+      <path id="city-limits" />
+      <g id="poi"></g>
     </svg>
     <script type="module">
       if (window.location.protocol === "file:") {
@@ -84,55 +111,11 @@
             .toArray()
         );
 
-      const streets = await fetch("./streets.json")
-        .then((r) => r.json())
-        .then((data) => data.elements);
-      const streetNodeMap = new Map(
-        streets
-          .values()
-          .filter((element) => element.type === "node")
-          .map((element) => [element.id, element])
-      );
-      const streetPaths = streets
-        .values()
-        .filter(
-          (element) =>
-            element.type === "way" &&
-            element.nodes?.length &&
-            element.tags?.highway
-        )
-        .map((element) =>
-          element.nodes.map((nodeId) =>
-            latLongToPixel(streetNodeMap.get(nodeId))
-          )
-        )
-        .toArray();
-
-      const trainLines = await fetch("./train-lines.json")
-        .then((r) => r.json())
-        .then((data) =>
-          data.elements
-            .values()
-            .filter((element) => element.type === "relation" && element.members)
-            .flatMap((element) => element.members)
-            .filter((member) => member.type === "way" && member.geometry)
-            .map((member) => member.geometry.map(latLongToPixel))
-            .toArray()
-        );
-
       const width = window.innerWidth;
       const height = window.innerHeight;
       const limits = {
-        x: extremes(
-          Iterator.concat(cityLimits, streetPaths, trainLines)
-            .flatMap((path) => path)
-            .map(({ x }) => x)
-        ),
-        y: extremes(
-          Iterator.concat(cityLimits, streetPaths, trainLines)
-            .flatMap((path) => path)
-            .map(({ y }) => y)
-        ),
+        x: extremes(cityLimits.flatMap((path) => path).map(({ x }) => x)),
+        y: extremes(cityLimits.flatMap((path) => path).map(({ y }) => y)),
       };
       const scale = Math.min(
         width / (limits.x.max - limits.x.min),
@@ -158,15 +141,72 @@
           .join("");
 
       document
-        .getElementById("paths")
+        .getElementById("city-limits")
         .setAttributeNS(null, "d", pathsToPath(cityLimits));
+
+      document.getElementById("train-lines").setAttributeNS(
+        null,
+        "d",
+        pathsToPath(
+          await fetch("./train-lines.json")
+            .then((r) => r.json())
+            .then((data) =>
+              data.elements
+                .values()
+                .filter(
+                  (element) => element.type === "relation" && element.members
+                )
+                .flatMap((element) => element.members)
+                .filter((member) => member.type === "way" && member.geometry)
+                .map((member) => member.geometry.map(latLongToPixel))
+                .toArray()
+            )
+        )
+      );
+
+      const poiFragment = document.createDocumentFragment();
+      for (const element of await fetch("./poi.json")
+        .then((r) => r.json())
+        .then((data) => data.elements)) {
+        const circ = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "circle"
+        );
+        circ.dataset.tourism = element.tags?.tourism;
+        circ.dataset.amenity = element.tags?.amenity;
+        const { x, y } = latLongToPixel(element.center ?? element);
+        circ.setAttributeNS(null, "cx", x * scale - offset.x);
+        circ.setAttributeNS(null, "cy", y * scale - offset.y);
+        poiFragment.append(circ);
+      }
+      document.getElementById("poi").append(poiFragment);
+
+      const streets = await fetch("./streets.json")
+        .then((r) => r.json())
+        .then((data) => data.elements);
+      const streetNodeMap = new Map(
+        streets
+          .values()
+          .filter((element) => element.type === "node")
+          .map((element) => [element.id, element])
+      );
+      const streetPaths = streets
+        .values()
+        .filter(
+          (element) =>
+            element.type === "way" &&
+            element.nodes?.length &&
+            element.tags?.highway
+        )
+        .map((element) =>
+          element.nodes.map((nodeId) =>
+            latLongToPixel(streetNodeMap.get(nodeId))
+          )
+        )
+        .toArray();
       document
         .getElementById("streets")
         .setAttributeNS(null, "d", pathsToPath(streetPaths));
-
-      document
-        .getElementById("train-lines")
-        .setAttributeNS(null, "d", pathsToPath(trainLines));
     </script>
   </body>
 </html>
