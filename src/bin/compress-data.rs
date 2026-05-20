@@ -14,14 +14,7 @@ static SF: &'static str =
 
 fn main() -> Result<(), Box<dyn Error>> {
     let client = Ensurer::new();
-    client.ensure(
-        "data/train-lines.json",
-        &format!(
-            r#"[bbox:{SF}][out:json];
-            relation["type"="route"]["route"~"train|subway|light_rail"];
-            out geom;"#
-        ),
-    )?;
+
     let stations = client
         .ensure(
             "data/train-stations.json",
@@ -38,46 +31,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?
         .read::<Station>()?
         .elements;
-    client.ensure(
-        "data/poi.json",
-        &format!(
-            r#"[bbox:{SF}][out:json];
-            (
-                node["tourism"="zoo"];
-                way["tourism"="zoo"];
-                node["tourism"="aquarium"];
-                way["tourism"="aquarium"];
-                node["amenity"="library"];
-                way["amenity"="library"];
-                node["tourism"="museum"];
-                way["tourism"="museum"];
-                node["amenity"="hospital"];
-                way["amenity"="hospital"];
-            );
-            out center;"#
-        ),
-    )?;
-    let streets = client
-        .ensure(
-            "data/streets.json",
-            &format!(
-                r#"[bbox:{SF}][out:json];
-            way["highway"];
-            out body;
-            >;
-            out skel qt;"#
-            ),
-        )?
-        .read::<StreetElement>()?
-        .elements;
-    client.ensure(
-        "data/city-limits.json",
-        &format!(
-            r#"[bbox:{SF}][out:json];
-            way["natural"="coastline"];
-            out geom;"#
-        ),
-    )?;
 
     // ["Red & White Fleet"]
     println!(
@@ -100,6 +53,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 1, "PresidiGo;Muni": 1, "Tahoe Convoy": 1}
     println!("{networks:?}");
 
+    let streets = client
+        .ensure(
+            "data/streets.json",
+            &format!(
+                r#"[bbox:{SF}][out:json];
+            way["highway"];
+            out body;
+            >;
+            out skel qt;"#
+            ),
+        )?
+        .read::<StreetElement>()?
+        .elements;
+
     // 285979
     println!("{}", streets.len());
 
@@ -117,6 +84,42 @@ fn main() -> Result<(), Box<dyn Error>> {
     // TertiaryLink: 77, TrunkLink: 31, PrimaryLink: 233, Proposed: 2,
     // Bridleway: 1, Steps: 2500, Footway: 36188}
     println!("{highway:?}");
+
+    client.ensure(
+        "data/train-lines.json",
+        &format!(
+            r#"[bbox:{SF}][out:json];
+            relation["type"="route"]["route"~"train|subway|light_rail"];
+            out geom;"#
+        ),
+    )?;
+    client.ensure(
+        "data/poi.json",
+        &format!(
+            r#"[bbox:{SF}][out:json];
+            (
+                node["tourism"="zoo"];
+                way["tourism"="zoo"];
+                node["tourism"="aquarium"];
+                way["tourism"="aquarium"];
+                node["amenity"="library"];
+                way["amenity"="library"];
+                node["tourism"="museum"];
+                way["tourism"="museum"];
+                node["amenity"="hospital"];
+                way["amenity"="hospital"];
+            );
+            out center;"#
+        ),
+    )?;
+    client.ensure(
+        "data/city-limits.json",
+        &format!(
+            r#"[bbox:{SF}][out:json];
+            way["natural"="coastline"];
+            out geom;"#
+        ),
+    )?;
 
     Ok(())
 }
