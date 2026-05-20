@@ -28,10 +28,15 @@
         stroke: grey;
         stroke-width: 0.5;
       }
+      #train-lines {
+        stroke: red;
+        stroke-width: 1.5;
+      }
     </style>
   </head>
   <body>
     <svg xmlns="http://www.w3.org/2000/svg">
+      <path id="train-lines" />
       <path id="streets" />
       <path id="paths" />
     </svg>
@@ -56,6 +61,13 @@
         let min = Infinity;
         let max = -Infinity;
         for (const value of iterable) {
+          if (typeof value !== "number") {
+            console.error(value);
+            throw new RangeError("received non-number");
+          }
+          if (Number.isNaN(value)) {
+            throw new RangeError("received NaN");
+          }
           min = Math.min(min, value);
           max = Math.max(max, value);
         }
@@ -96,19 +108,29 @@
         )
         .toArray();
 
+      const trainLines = await fetch("./train-lines.json")
+        .then((r) => r.json())
+        .then((data) =>
+          data.elements
+            .values()
+            .filter((element) => element.type === "relation" && element.members)
+            .flatMap((element) => element.members)
+            .filter((member) => member.type === "way" && member.geometry)
+            .map((member) => member.geometry.map(latLongToPixel))
+            .toArray()
+        );
+
       const width = window.innerWidth;
       const height = window.innerHeight;
       const limits = {
         x: extremes(
-          cityLimits
-            .values()
-            .flatMap((geometry) => geometry)
+          Iterator.concat(cityLimits, streetPaths, trainLines)
+            .flatMap((path) => path)
             .map(({ x }) => x)
         ),
         y: extremes(
-          cityLimits
-            .values()
-            .flatMap((geometry) => geometry)
+          Iterator.concat(cityLimits, streetPaths, trainLines)
+            .flatMap((path) => path)
             .map(({ y }) => y)
         ),
       };
@@ -141,6 +163,10 @@
       document
         .getElementById("streets")
         .setAttributeNS(null, "d", pathsToPath(streetPaths));
+
+      document
+        .getElementById("train-lines")
+        .setAttributeNS(null, "d", pathsToPath(trainLines));
     </script>
   </body>
 </html>
