@@ -1,3 +1,4 @@
+// DEPRECATED: Use `cargo run --bin compress-data` instead
 // Usage: bun run data/overpass-test.ts
 // Format JSON separately to your liking (I use prettier)
 
