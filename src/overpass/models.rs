@@ -18,3 +18,56 @@ pub struct StationTags {
     /// `None` in only one case (Red & White Fleet), which is a ferry station
     pub network: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreetElement {
+    Node {
+        id: u64,
+        lat: f64,
+        lon: f64,
+    },
+    Way {
+        nodes: Vec<u64>,
+        tags: StreetWayTags,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreetWayTags {
+    pub highway: StreetWayType,
+}
+
+#[derive(Debug, Deserialize, Hash, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StreetWayType {
+    Footway,
+    Residential,
+    Motorway,
+    Service,
+    Unclassified,
+    Tertiary,
+    Secondary,
+    Steps,
+    PrimaryLink,
+    MotorwayLink,
+    Cycleway,
+    TertiaryLink,
+    TrunkLink,
+    SecondaryLink,
+    Primary,
+    ResidentialLink,
+    Path,
+    Pedestrian,
+    Trunk,
+    LivingStreet,
+    Construction,
+    Track,
+    Busway,
+    Platform,
+    Corridor,
+    Bridleway,
+    Proposed,
+    Elevator,
+    BusStop,
+}
