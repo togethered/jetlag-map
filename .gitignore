@@ -37,3 +37,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Added by cargo
 
 /target
+
+# TEMP, will hopefully be small enough to serve to clients
+src/streets_optimized.bin

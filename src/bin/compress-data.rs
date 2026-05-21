@@ -2,7 +2,12 @@
 //! cargo run --release --bin compress-data
 //! ```
 
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fs::File,
+    io::{BufWriter, Seek, Write},
+};
 
 use itertools::Itertools;
 use jetlag_map::overpass::{
@@ -70,6 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // 285979
     eprintln!("{}", streets.len());
+    // no name: 48170
     eprintln!(
         "no name: {}",
         streets
@@ -99,40 +105,77 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Bridleway: 1, Steps: 2500, Footway: 36188}
     eprintln!("{highway:?}");
 
-    let nodes = streets
-        .iter()
-        .filter_map(|element| match element {
-            StreetElement::Node { id, lat, lon } => Some((id, (lat, lon))),
-            _ => None,
-        })
-        .collect::<HashMap<_, _>>();
-    let lat_extremes = nodes
-        .values()
-        .map(|node| node.0)
-        .minmax()
-        .into_option()
-        .expect("should be at least one node");
-    let lon_extremes = nodes
-        .values()
-        .map(|node| node.1)
-        .minmax()
-        .into_option()
-        .expect("should be at least one node");
-    eprintln!("{lat_extremes:?} {lon_extremes:?}");
+    {
+        let streets_optimized = File::create("src/streets_optimized.bin")?;
+        let mut writer = BufWriter::new(streets_optimized);
 
-    let ways = streets
-        .iter()
-        .filter_map(|element| match element {
-            StreetElement::Way { nodes, .. } => Some(nodes),
-            _ => None,
-        })
-        .map(|node_ids| {
-            node_ids
-                .iter()
-                .filter_map(|node_id| nodes.get(node_id))
-                .collect_vec()
-        })
-        .collect_vec();
+        let node_coords = streets
+            .iter()
+            .filter_map(|element| match element {
+                StreetElement::Node { id, lat, lon } => Some((id, lat, lon)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let lat_extremes = node_coords
+            .iter()
+            .map(|node| node.1)
+            .minmax()
+            .into_option()
+            .expect("should be at least one node");
+        let lon_extremes = node_coords
+            .iter()
+            .map(|node| node.2)
+            .minmax()
+            .into_option()
+            .expect("should be at least one node");
+        // (37.6876263, 37.8323305) (-122.514537, -122.3276982)
+        eprintln!("{lat_extremes:?} {lon_extremes:?}");
+        eprintln!("{} nodes (max: {})", node_coords.len(), u16::MAX);
+
+        writer.write_all(&lat_extremes.0.to_be_bytes())?;
+        writer.write_all(&lat_extremes.1.to_be_bytes())?;
+        writer.write_all(&lon_extremes.0.to_be_bytes())?;
+        writer.write_all(&lon_extremes.1.to_be_bytes())?;
+        writer.write_all(&TryInto::<u32>::try_into(node_coords.len())?.to_be_bytes())?;
+
+        for (_, lat, lon) in &node_coords {
+            writer.write_all(
+                &(((*lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0) * (u16::MAX as f64))
+                    as u16)
+                    .to_be_bytes(),
+            )?;
+            writer.write_all(
+                &(((*lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0) * (u16::MAX as f64))
+                    as u16)
+                    .to_be_bytes(),
+            )?;
+        }
+
+        let node_index_map = node_coords
+            .iter()
+            .zip(0u16..)
+            .map(|((id, _, _), index)| (id, index))
+            .collect::<HashMap<_, _>>();
+
+        for street in &streets {
+            let StreetElement::Way { nodes, .. } = street else {
+                continue;
+            };
+            for node_id in nodes {
+                let Some(index) = node_index_map.get(&node_id) else {
+                    continue;
+                };
+                writer.write_all(&index.to_be_bytes())?;
+            }
+        }
+
+        writer.flush()?;
+        // wrote src/streets_optimized.bin (1543578 bytes)
+        eprintln!(
+            "wrote src/streets_optimized.bin ({} bytes)",
+            writer.stream_position()?
+        );
+    }
 
     client.ensure(
         "data/train-lines.json",
