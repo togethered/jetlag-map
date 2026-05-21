@@ -118,13 +118,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             .flat_map(|nodes| nodes)
             .collect::<HashSet<_>>();
 
-        let node_coords = streets
+        let mut node_coords = streets
             .iter()
             .filter_map(|element| match element {
                 StreetElement::Node { id, lat, lon } => Some((id, lat, lon)),
                 _ => None,
             })
             .collect::<Vec<_>>();
+        node_coords.sort_by(|a, b| a.1.total_cmp(b.1).then_with(|| a.2.total_cmp(b.2)));
         let lat_extremes = node_coords
             .iter()
             .map(|node| node.1)
@@ -139,7 +140,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("should be at least one node");
         // (37.6876263, 37.8323305) (-122.514537, -122.3276982)
         eprintln!("{lat_extremes:?} {lon_extremes:?}");
-        eprintln!("{} nodes (max: {})", node_coords.len(), u16::MAX);
 
         writer.write_all(&lat_extremes.0.to_be_bytes())?;
         writer.write_all(&lat_extremes.1.to_be_bytes())?;
@@ -169,11 +169,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None
                 }
             })
-            .zip(0u16..)
+            .zip(0u32..)
             .map(|(id, index)| (id, index))
             .collect::<HashMap<_, _>>();
-        // 222561 / 222561 nodes
-        eprintln!("{} / {} nodes", node_index_map.len(), node_coords.len());
+        // 222561 / 222561 nodes (max: 65535)
+        eprintln!(
+            "{} / {} nodes (max: {})",
+            node_index_map.len(),
+            node_coords.len(),
+            u16::MAX
+        );
 
         for street in &streets {
             let StreetElement::Way { nodes, .. } = street else {
@@ -185,6 +190,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 };
                 writer.write_all(&index.to_be_bytes())?;
             }
+            writer.write_all(&u32::MAX.to_be_bytes())?;
         }
 
         writer.flush()?;

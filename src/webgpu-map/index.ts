@@ -1,3 +1,4 @@
+import { parseStreets } from "./lib/parseStreets";
 import shader from "./shader.wgsl" with { type: "text" };
 
 function throwError(message: string): never {
@@ -5,6 +6,7 @@ function throwError(message: string): never {
   throw new Error(message);
 }
 
+// https://sheeptester.github.io/words-go-here/misc/blur.html
 const format = navigator.gpu.getPreferredCanvasFormat();
 const adapter = await navigator.gpu.requestAdapter();
 if (!adapter) throwError("missing adapter");
@@ -36,3 +38,26 @@ if (messages.some((message) => message.type === "error")) {
         .join(""),
   );
 }
+
+const streetsData = await fetch("./streets.bin")
+  .then((r) => r.arrayBuffer())
+  .then(parseStreets);
+console.log(streetsData);
+
+let last: number | undefined;
+let max = 0;
+for (const [i, n] of streetsData.wayIndices.entries()) {
+  if (n === 4294967295) {
+    last = undefined;
+  } else {
+    if (last !== undefined) {
+      const diff = Math.abs(n - last);
+      if (diff > max) {
+        max = diff;
+        console.log("bigger", i, last, n, max);
+      }
+    }
+    last = n;
+  }
+}
+console.log({ max });
