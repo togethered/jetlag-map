@@ -38,6 +38,44 @@ if (messages.some((message) => message.type === "error")) {
         .join(""),
   );
 }
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module, entryPoint: "vertex_main" },
+  fragment: {
+    module,
+    entryPoint: "fragment_main",
+    targets: [{ format }],
+  },
+});
+
+const validationError = await device.popErrorScope();
+const memoryError = await device.popErrorScope();
+const internalError = await device.popErrorScope();
+if (validationError) {
+  throw new TypeError(`WebGPU validation error: ${validationError.message}`);
+}
+if (memoryError) {
+  throw new TypeError(`WebGPU out of memory error: ${memoryError.message}`);
+}
+if (internalError) {
+  throw new TypeError(`WebGPU internal error: ${internalError.message}`);
+}
+
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [
+    {
+      view: context.getCurrentTexture().createView(),
+      clearValue: [0.02, 0.04, 0.08, 1],
+      loadOp: "clear",
+      storeOp: "store",
+    },
+  ],
+});
+pass.setPipeline(pipeline);
+pass.draw(3);
+pass.end();
+device.queue.submit([encoder.finish()]);
 
 const streetsData = await fetch("./streets.bin")
   .then((r) => r.arrayBuffer())
