@@ -149,18 +149,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         writer.write_all(&lon_extremes.1.to_be_bytes())?;
         writer.write_all(&TryInto::<u32>::try_into(node_coords.len())?.to_be_bytes())?;
 
-        for (_, lat, lon) in &node_coords {
-            writer.write_all(
-                &(((*lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0) * (u16::MAX as f64))
-                    as u16)
-                    .to_be_bytes(),
-            )?;
-            writer.write_all(
-                &(((*lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0) * (u16::MAX as f64))
-                    as u16)
-                    .to_be_bytes(),
-            )?;
+        for (_, lat, _) in &node_coords {
+            let n = ((*lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0)
+                * (u16::MAX as f64)) as u16;
+            writer.write_all(&(n).to_be_bytes())?;
         }
+        // Because we sorted by longitude first, lon should be strictly
+        // monotonic and have few differences between nodes
+        let mut prev = None;
+        let mut max_diff = 0;
+        for (_, _, lon) in &node_coords {
+            let n = ((*lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0)
+                * (u16::MAX as f64)) as u16;
+            if let Some(prev_n) = prev {
+                let diff = n.checked_sub(prev_n).expect("longitude was not monotonic");
+                if diff > max_diff {
+                    max_diff = diff;
+                    if max_diff >= 256 {
+                        eprintln!("{max_diff}");
+                    }
+                }
+                writer.write_all(&[TryInto::<u8>::try_into(diff)?])?;
+            } else {
+                writer.write_all(&n.to_be_bytes())?;
+            }
+            prev = Some(n);
+        }
+
+        let nodes_size = writer.stream_position()?;
+        eprintln!("nodes take up {nodes_size} bytes (max longitude diff: {max_diff})");
 
         let node_index_map = node_coords
             .iter()
@@ -203,10 +220,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         writer.flush()?;
+
+        let total_size = writer.stream_position()?;
         // wrote src/streets_optimized.bin (1543578 bytes)
         eprintln!(
-            "wrote src/streets_optimized.bin ({} bytes)",
-            writer.stream_position()?
+            "wrote src/streets_optimized.bin ({} bytes, ways was {} bytes)",
+            total_size,
+            total_size - nodes_size
         );
     }
 
