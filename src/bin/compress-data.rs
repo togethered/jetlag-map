@@ -168,15 +168,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let node_index_map = node_coords
             .iter()
-            .filter_map(|(id, _, _)| {
-                if referenced_nodes.contains(id) {
-                    Some(id)
+            .filter_map(|entry| {
+                if referenced_nodes.contains(entry.0) {
+                    Some(entry)
                 } else {
                     None
                 }
             })
             .zip(0i32..)
-            .map(|(id, index)| (id, index))
+            .map(|((id, lat, lon), index)| (id, (index, lat, lon)))
             .collect::<HashMap<_, _>>();
         // 222561 / 222561 nodes (max: 65535)
         eprintln!(
@@ -195,11 +195,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &node_index_map
                     .get(&&nodes[0])
                     .expect("missing first node id")
+                    .0
                     .to_be_bytes(),
             )?;
             for (prev, index) in nodes
                 .iter()
-                .map(|node_id| node_index_map.get(&node_id).expect("missing node id"))
+                .map(|node_id| node_index_map.get(&node_id).expect("missing node id").0)
                 .tuple_windows()
             {
                 writer.write_all(&TryInto::<i16>::try_into(index - prev)?.to_be_bytes())?;
@@ -214,6 +215,38 @@ fn main() -> Result<(), Box<dyn Error>> {
             "wrote src/streets_optimized.bin ({} bytes, ways was {} bytes)",
             total_size,
             total_size - nodes_size
+        );
+
+        let streets_optimized2 = File::create("src/streets_optimized2.bin")?;
+        let mut writer2 = BufWriter::new(streets_optimized2);
+
+        for street in &streets {
+            let StreetElement::Way { nodes, .. } = street else {
+                continue;
+            };
+            writer2.write_all(&TryInto::<u16>::try_into(nodes.len())?.to_be_bytes())?;
+            for (_, lat, lon) in nodes
+                .iter()
+                .map(|node_id| node_index_map.get(&node_id).expect("missing node id"))
+            {
+                writer2.write_all(
+                    &(((***lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0)
+                        * (u16::MAX as f64)) as u16)
+                        .to_be_bytes(),
+                )?;
+                writer2.write_all(
+                    &(((***lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0)
+                        * (u16::MAX as f64)) as u16)
+                        .to_be_bytes(),
+                )?;
+            }
+        }
+
+        writer2.flush()?;
+        // wrote src/streets_optimized2.bin (1433432 bytes)
+        eprintln!(
+            "wrote src/streets_optimized2.bin ({} bytes)",
+            writer2.stream_position()?
         );
     }
 
