@@ -13,10 +13,19 @@ export function parseStreets(bin: ArrayBuffer) {
       extremes.min +
       (view.getUint16(36 + i * 2) / 0xffff) * (extremes.max - extremes.min);
   }
-  const wayIndicesStart = 36 + nodeCount * 4;
-  const wayIndices = new Uint32Array((bin.byteLength - wayIndicesStart) / 4);
-  for (let i = 0; i < wayIndices.length; i++) {
-    wayIndices[i] = view.getUint32(wayIndicesStart + i * 4);
+  let i = 36 + nodeCount * 4;
+  const wayIndices: Uint32Array[] = [];
+  while (i < bin.byteLength) {
+    const nodeCount = new Uint32Array(view.getUint16(i));
+    wayIndices.push(nodeCount);
+    let prev = (nodeCount[0] = view.getInt32(i + 2));
+    for (let j = 1; j < nodeCount.length; j++) {
+      prev = nodeCount[j] = prev + view.getInt16(i + 6 + (j - 1) * 2);
+    }
+    i += 6 + (nodeCount.length - 1) * 2;
+  }
+  if (i !== bin.byteLength) {
+    throw new RangeError(`cursor at ${i}, should be at ${bin.byteLength}`);
   }
   console.timeEnd("parseStreets");
   return { nodeCoords, wayIndices };

@@ -43,21 +43,3 @@ const streetsData = await fetch("./streets.bin")
   .then((r) => r.arrayBuffer())
   .then(parseStreets);
 console.log(streetsData);
-
-let last: number | undefined;
-let max = 0;
-for (const [i, n] of streetsData.wayIndices.entries()) {
-  if (n === 4294967295) {
-    last = undefined;
-  } else {
-    if (last !== undefined) {
-      const diff = Math.abs(n - last);
-      if (diff > max) {
-        max = diff;
-        console.log("bigger", i, last, n, max);
-      }
-    }
-    last = n;
-  }
-}
-console.log({ max });

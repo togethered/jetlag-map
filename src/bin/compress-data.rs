@@ -125,7 +125,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        node_coords.sort_by(|a, b| a.1.total_cmp(b.1).then_with(|| a.2.total_cmp(b.2)));
+        // Sorting by longitude then latitude brings max abs node diff down
+        // under i16::MAX
+        node_coords.sort_by(|a, b| a.2.total_cmp(b.2).then_with(|| a.1.total_cmp(b.1)));
         let lat_extremes = node_coords
             .iter()
             .map(|node| node.1)
@@ -169,7 +171,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None
                 }
             })
-            .zip(0u32..)
+            .zip(0i32..)
             .map(|(id, index)| (id, index))
             .collect::<HashMap<_, _>>();
         // 222561 / 222561 nodes (max: 65535)
@@ -184,13 +186,20 @@ fn main() -> Result<(), Box<dyn Error>> {
             let StreetElement::Way { nodes, .. } = street else {
                 continue;
             };
-            for node_id in nodes {
-                let Some(index) = node_index_map.get(&node_id) else {
-                    continue;
-                };
-                writer.write_all(&index.to_be_bytes())?;
+            writer.write_all(&TryInto::<u16>::try_into(nodes.len())?.to_be_bytes())?;
+            writer.write_all(
+                &node_index_map
+                    .get(&&nodes[0])
+                    .expect("missing first node id")
+                    .to_be_bytes(),
+            )?;
+            for (prev, index) in nodes
+                .iter()
+                .map(|node_id| node_index_map.get(&node_id).expect("missing node id"))
+                .tuple_windows()
+            {
+                writer.write_all(&TryInto::<i16>::try_into(index - prev)?.to_be_bytes())?;
             }
-            writer.write_all(&u32::MAX.to_be_bytes())?;
         }
 
         writer.flush()?;
