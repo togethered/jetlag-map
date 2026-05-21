@@ -4,9 +4,10 @@
 
 use std::{collections::HashMap, error::Error};
 
+use itertools::Itertools;
 use jetlag_map::overpass::{
     ensure::Ensurer,
-    models::{Station, StreetElement},
+    models::{Station, StreetElement, StreetWayTags},
 };
 
 static SF: &'static str =
@@ -33,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .elements;
 
     // ["Red & White Fleet"]
-    println!(
+    eprintln!(
         "{:?}",
         stations
             .iter()
@@ -51,7 +52,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // {"BART": 8, "Muni": 359, "Caltrain": 3, "San Francisco Bay Ferry": 2,
     // "Muni;GGT;AC Transit;WestCAT;Greyhound;Flixbus": 1, "GGT;Muni;PresidiGo":
     // 1, "PresidiGo;Muni": 1, "Tahoe Convoy": 1}
-    println!("{networks:?}");
+    eprintln!("{networks:?}");
 
     let streets = client
         .ensure(
@@ -68,10 +69,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .elements;
 
     // 285979
-    println!("{}", streets.len());
+    eprintln!("{}", streets.len());
+    eprintln!(
+        "no name: {}",
+        streets
+            .iter()
+            .filter(|street| match street {
+                StreetElement::Way {
+                    tags: StreetWayTags { name: None, .. },
+                    ..
+                } => true,
+                _ => false,
+            })
+            .count()
+    );
 
     let mut highway = HashMap::new();
-    for street in streets {
+    for street in &streets {
         if let StreetElement::Way { tags, .. } = street {
             *highway.entry(tags.highway).or_insert(0) += 1;
         }
@@ -83,7 +97,42 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 4, Pedestrian: 369, BusStop: 3, Busway: 165, Residential: 5908,
     // TertiaryLink: 77, TrunkLink: 31, PrimaryLink: 233, Proposed: 2,
     // Bridleway: 1, Steps: 2500, Footway: 36188}
-    println!("{highway:?}");
+    eprintln!("{highway:?}");
+
+    let nodes = streets
+        .iter()
+        .filter_map(|element| match element {
+            StreetElement::Node { id, lat, lon } => Some((id, (lat, lon))),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+    let lat_extremes = nodes
+        .values()
+        .map(|node| node.0)
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    let lon_extremes = nodes
+        .values()
+        .map(|node| node.1)
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    eprintln!("{lat_extremes:?} {lon_extremes:?}");
+
+    let ways = streets
+        .iter()
+        .filter_map(|element| match element {
+            StreetElement::Way { nodes, .. } => Some(nodes),
+            _ => None,
+        })
+        .map(|node_ids| {
+            node_ids
+                .iter()
+                .filter_map(|node_id| nodes.get(node_id))
+                .collect_vec()
+        })
+        .collect_vec();
 
     client.ensure(
         "data/train-lines.json",

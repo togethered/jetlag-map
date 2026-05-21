@@ -28,6 +28,7 @@ pub enum StreetElement {
         lon: f64,
     },
     Way {
+        id: u64,
         nodes: Vec<u64>,
         tags: StreetWayTags,
     },
@@ -36,9 +37,10 @@ pub enum StreetElement {
 #[derive(Debug, Deserialize)]
 pub struct StreetWayTags {
     pub highway: StreetWayType,
+    pub name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Hash, Eq, PartialEq, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum StreetWayType {
     Footway,
