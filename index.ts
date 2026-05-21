@@ -1,11 +1,13 @@
 import { join } from "node:path";
 
-const files = {
+type ReturnsFile = (isBuild: boolean) => Blob | "" | Promise<Blob | "">;
+
+const files: Record<string, ReturnsFile> = {
   "index.html": () => Bun.file("./src/index.html"),
-  "main.js": async () => {
+  "main.js": async (isBuild) => {
     const build = await Bun.build({
       entrypoints: ["./src/main.ts"],
-      minify: true,
+      minify: isBuild,
     });
     return build.outputs[0] ?? "";
   },
@@ -15,7 +17,18 @@ const files = {
     Bun.file("./node_modules/@mapbox-controls/compass/src/index.css"),
   "css/ruler.css": () =>
     Bun.file("./node_modules/@mapbox-controls/ruler/src/index.css"),
-  "/css/export.css": () => Bun.file("./node_modules/@watergis/maplibre-gl-export/dist/maplibre-gl-export.css"),
+  "/css/export.css": () =>
+    Bun.file(
+      "./node_modules/@watergis/maplibre-gl-export/dist/maplibre-gl-export.css"
+    ),
+  "webgpu-map.html": () => Bun.file("./src/webgpu-map/index.html"),
+  "webgpu-index.js": async (isBuild) => {
+    const build = await Bun.build({
+      entrypoints: ["./src/webgpu-map/index.ts"],
+      minify: isBuild,
+    });
+    return build.outputs[0] ?? "";
+  },
 };
 
 const [, , mode = ""] = Bun.argv;
@@ -33,7 +46,7 @@ switch (mode) {
         Object.entries(files).map(([path, handler]) => [
           path === "index.html" ? "/" : "/" + path,
           async () => {
-            return new Response(await handler(), {
+            return new Response(await handler(false), {
               headers: {
                 "Content-Type": path.endsWith(".js")
                   ? "text/javascript"
@@ -51,7 +64,7 @@ switch (mode) {
   }
   case "build": {
     for (const [path, handler] of Object.entries(files)) {
-      await Bun.write(join("dist", path), await handler());
+      await Bun.write(join("dist", path), await handler(true));
     }
     break;
   }
