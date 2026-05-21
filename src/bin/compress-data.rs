@@ -3,7 +3,7 @@
 //! ```
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     error::Error,
     fs::File,
     io::{BufWriter, Seek, Write},
@@ -26,13 +26,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             "data/train-stations.json",
             &format!(
                 r#"[bbox:{SF}][out:json];
-            (
-                node["railway"="station"];
-                node["railway"="tram_stop"];
-                node["station"="subway"];
-                node["public_transport"="station"];
-            );
-            out body;"#
+                (
+                    node["railway"="station"];
+                    node["railway"="tram_stop"];
+                    node["station"="subway"];
+                    node["public_transport"="station"];
+                );
+                out body;"#
             ),
         )?
         .read::<Station>()?
@@ -64,10 +64,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             "data/streets.json",
             &format!(
                 r#"[bbox:{SF}][out:json];
-            way["highway"];
-            out body;
-            >;
-            out skel qt;"#
+                way["highway"];
+                out body;
+                >;
+                out skel qt;"#
             ),
         )?
         .read::<StreetElement>()?
@@ -108,6 +108,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         let streets_optimized = File::create("src/streets_optimized.bin")?;
         let mut writer = BufWriter::new(streets_optimized);
+
+        let referenced_nodes = streets
+            .iter()
+            .filter_map(|element| match element {
+                StreetElement::Way { nodes, .. } => Some(nodes),
+                _ => None,
+            })
+            .flat_map(|nodes| nodes)
+            .collect::<HashSet<_>>();
 
         let node_coords = streets
             .iter()
@@ -153,9 +162,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let node_index_map = node_coords
             .iter()
+            .filter_map(|(id, _, _)| {
+                if referenced_nodes.contains(id) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
             .zip(0u16..)
-            .map(|((id, _, _), index)| (id, index))
+            .map(|(id, index)| (id, index))
             .collect::<HashMap<_, _>>();
+        // 222561 / 222561 nodes
+        eprintln!("{} / {} nodes", node_index_map.len(), node_coords.len());
 
         for street in &streets {
             let StreetElement::Way { nodes, .. } = street else {
