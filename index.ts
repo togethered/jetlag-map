@@ -19,7 +19,7 @@ const files: Record<string, ReturnsFile> = {
     Bun.file("./node_modules/@mapbox-controls/ruler/src/index.css"),
   "/css/export.css": () =>
     Bun.file(
-      "./node_modules/@watergis/maplibre-gl-export/dist/maplibre-gl-export.css"
+      "./node_modules/@watergis/maplibre-gl-export/dist/maplibre-gl-export.css",
     ),
   "webgpu-map.html": () => Bun.file("./src/webgpu-map/index.html"),
   "webgpu-index.js": async (isBuild) => {
@@ -29,6 +29,7 @@ const files: Record<string, ReturnsFile> = {
     });
     return build.outputs[0] ?? "";
   },
+  // "streets.bin": () => Bun.file("./src/streets_optimized.bin"),
 };
 
 const [, , mode = ""] = Bun.argv;
@@ -51,12 +52,12 @@ switch (mode) {
                 "Content-Type": path.endsWith(".js")
                   ? "text/javascript"
                   : path.endsWith(".css")
-                  ? "text/css"
-                  : "text/html",
+                    ? "text/css"
+                    : "text/html",
               },
             });
           },
-        ])
+        ]),
       ),
     });
     console.log(`Listening on ${server.url}`);

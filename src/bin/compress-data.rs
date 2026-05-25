@@ -18,6 +18,20 @@ use jetlag_map::overpass::{
 static SF: &'static str =
     "37.70765015159924,-122.5189634289361,37.816301033516325,-122.35772673478483";
 
+#[derive(Clone, Copy)]
+struct StreetNode {
+    osm_id: u64,
+    index: i32,
+    lat: f64,
+    lon: f64,
+}
+
+impl StreetNode {
+    fn with_index(&self, index: i32) -> Self {
+        Self { index, ..*self }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let client = Ensurer::new();
 
@@ -121,22 +135,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut node_coords = streets
             .iter()
             .filter_map(|element| match element {
-                StreetElement::Node { id, lat, lon } => Some((id, lat, lon)),
+                StreetElement::Node { id, lat, lon } => Some(StreetNode {
+                    osm_id: *id,
+                    lat: *lat,
+                    lon: *lon,
+                    index: 0,
+                }),
                 _ => None,
             })
             .collect::<Vec<_>>();
         // Sorting by longitude then latitude brings max abs node diff down
         // under i16::MAX
-        node_coords.sort_by(|a, b| a.2.total_cmp(b.2).then_with(|| a.1.total_cmp(b.1)));
+        node_coords.sort_by(|a, b| {
+            a.lon
+                .total_cmp(&b.lon)
+                .then_with(|| a.lat.total_cmp(&b.lat))
+        });
         let lat_extremes = node_coords
             .iter()
-            .map(|node| node.1)
+            .map(|node| node.lat)
             .minmax()
             .into_option()
             .expect("should be at least one node");
         let lon_extremes = node_coords
             .iter()
-            .map(|node| node.2)
+            .map(|node| node.lon)
             .minmax()
             .into_option()
             .expect("should be at least one node");
@@ -149,7 +172,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         writer.write_all(&lon_extremes.1.to_be_bytes())?;
         writer.write_all(&TryInto::<u32>::try_into(node_coords.len())?.to_be_bytes())?;
 
-        for (_, lat, lon) in &node_coords {
+        for StreetNode { lat, lon, .. } in &node_coords {
             writer.write_all(
                 &(((*lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0) * (u16::MAX as f64))
                     as u16)
@@ -169,14 +192,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         let node_index_map = node_coords
             .iter()
             .filter_map(|entry| {
-                if referenced_nodes.contains(entry.0) {
+                if referenced_nodes.contains(&entry.osm_id) {
                     Some(entry)
                 } else {
                     None
                 }
             })
             .zip(0i32..)
-            .map(|((id, lat, lon), index)| (id, (index, lat, lon)))
+            .map(|(node, index)| (node.osm_id, node.with_index(index)))
             .collect::<HashMap<_, _>>();
         // 222561 / 222561 nodes (max: 65535)
         eprintln!(
@@ -186,26 +209,31 @@ fn main() -> Result<(), Box<dyn Error>> {
             u16::MAX
         );
 
+        let mut way_count = 0;
+        let mut way_node_count = 0;
         for street in &streets {
             let StreetElement::Way { nodes, .. } = street else {
                 continue;
             };
+            way_count += 1;
+            way_node_count += nodes.len();
             writer.write_all(&TryInto::<u16>::try_into(nodes.len())?.to_be_bytes())?;
             writer.write_all(
                 &node_index_map
                     .get(&&nodes[0])
                     .expect("missing first node id")
-                    .0
+                    .index
                     .to_be_bytes(),
             )?;
             for (prev, index) in nodes
                 .iter()
-                .map(|node_id| node_index_map.get(&node_id).expect("missing node id").0)
+                .map(|node_id| node_index_map.get(&node_id).expect("missing node id").index)
                 .tuple_windows()
             {
                 writer.write_all(&TryInto::<i16>::try_into(index - prev)?.to_be_bytes())?;
             }
         }
+        eprintln!("btw there are {way_count} ways, {way_node_count}ish segments total");
 
         writer.flush()?;
 
@@ -225,17 +253,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                 continue;
             };
             writer2.write_all(&TryInto::<u16>::try_into(nodes.len())?.to_be_bytes())?;
-            for (_, lat, lon) in nodes
+            for StreetNode { lat, lon, .. } in nodes
                 .iter()
                 .map(|node_id| node_index_map.get(&node_id).expect("missing node id"))
             {
                 writer2.write_all(
-                    &(((***lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0)
+                    &(((*lat - lat_extremes.0) / (lat_extremes.1 - lat_extremes.0)
                         * (u16::MAX as f64)) as u16)
                         .to_be_bytes(),
                 )?;
                 writer2.write_all(
-                    &(((***lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0)
+                    &(((*lon - lon_extremes.0) / (lon_extremes.1 - lon_extremes.0)
                         * (u16::MAX as f64)) as u16)
                         .to_be_bytes(),
                 )?;
