@@ -313,6 +313,19 @@ fn process_streets(client: &Ensurer) -> Result<(), Box<dyn Error>> {
         y_extremes.1 - y_extremes.0
     );
 
+    const TILE_COUNT_Y: f64 = 256.0;
+
+    // gemini invented this formula
+    /// meters
+    const APPROX_EARTH_RADIUS: f64 = 6_371_000.0;
+    // for 256 tiles (vertically) each tile will be 62.853019156873096m tall and the street precision will be 0.24551960608153553m
+    eprintln!(
+        "for {TILE_COUNT_Y} tiles (vertically) each tile will be {}m tall and the street precision will be {}m",
+        ((lat_extremes.1 - lat_extremes.0) / TILE_COUNT_Y).to_radians() * APPROX_EARTH_RADIUS,
+        ((lat_extremes.1 - lat_extremes.0) / TILE_COUNT_Y / 256.0).to_radians()
+            * APPROX_EARTH_RADIUS,
+    );
+
     Ok(())
 }
 
