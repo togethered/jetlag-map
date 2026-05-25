@@ -10,15 +10,18 @@ use std::{
 };
 
 use itertools::Itertools;
-use jetlag_map::overpass::{
-    ensure::Ensurer,
-    models::{Station, StreetElement, StreetWayTags},
+use jetlag_map::{
+    overpass::{
+        ensure::Ensurer,
+        models::{Station, StreetElement, StreetWayTags},
+    },
+    utils::{lat_to_y, lon_to_x},
 };
 
 static SF: &'static str =
     "37.70765015159924,-122.5189634289361,37.816301033516325,-122.35772673478483";
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct StreetNode {
     osm_id: u64,
     index: i32,
@@ -29,6 +32,14 @@ struct StreetNode {
 impl StreetNode {
     fn with_index(&self, index: i32) -> Self {
         Self { index, ..*self }
+    }
+
+    fn x(&self) -> f64 {
+        lon_to_x(self.lon)
+    }
+
+    fn y(&self) -> f64 {
+        lat_to_y(self.lat)
     }
 }
 
@@ -104,10 +115,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             .count()
     );
 
-    let mut highway = HashMap::new();
+    let mut highway_map = HashMap::new();
     for street in &streets {
         if let StreetElement::Way { tags, .. } = street {
-            *highway.entry(tags.highway).or_insert(0) += 1;
+            *highway_map.entry(tags.highway).or_insert(0) += 1;
         }
     }
     // {Cycleway: 568, MotorwayLink: 368, Primary: 1706, SecondaryLink: 155,
@@ -117,54 +128,74 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 4, Pedestrian: 369, BusStop: 3, Busway: 165, Residential: 5908,
     // TertiaryLink: 77, TrunkLink: 31, PrimaryLink: 233, Proposed: 2,
     // Bridleway: 1, Steps: 2500, Footway: 36188}
-    eprintln!("{highway:?}");
+    eprintln!("{highway_map:?}");
+
+    let referenced_nodes = streets
+        .iter()
+        .filter_map(|element| match element {
+            StreetElement::Way { nodes, .. } => Some(nodes),
+            _ => None,
+        })
+        .flat_map(|nodes| nodes)
+        .collect::<HashSet<_>>();
+
+    let mut node_coords = streets
+        .iter()
+        .filter_map(|element| match element {
+            StreetElement::Node { id, lat, lon } => Some(StreetNode {
+                osm_id: *id,
+                lat: *lat,
+                lon: *lon,
+                index: 0,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    // Sorting by longitude then latitude brings max abs node diff down
+    // under i16::MAX
+    node_coords.sort_by(|a, b| {
+        a.lon
+            .total_cmp(&b.lon)
+            .then_with(|| a.lat.total_cmp(&b.lat))
+    });
+    let lat_extremes = node_coords
+        .iter()
+        .map(|node| node.lat)
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    let lon_extremes = node_coords
+        .iter()
+        .map(|node| node.lon)
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    // (37.6876263, 37.8323305) (-122.514537, -122.3276982)
+    eprintln!("{lat_extremes:?} {lon_extremes:?}");
+
+    let node_index_map = node_coords
+        .iter()
+        .filter_map(|entry| {
+            if referenced_nodes.contains(&entry.osm_id) {
+                Some(entry)
+            } else {
+                None
+            }
+        })
+        .zip(0i32..)
+        .map(|(node, index)| (node.osm_id, node.with_index(index)))
+        .collect::<HashMap<_, _>>();
+    // 222561 / 222561 nodes (max: 65535)
+    eprintln!(
+        "{} / {} nodes (max: {})",
+        node_index_map.len(),
+        node_coords.len(),
+        u16::MAX
+    );
 
     {
         let streets_optimized = File::create("src/streets_optimized.bin")?;
         let mut writer = BufWriter::new(streets_optimized);
-
-        let referenced_nodes = streets
-            .iter()
-            .filter_map(|element| match element {
-                StreetElement::Way { nodes, .. } => Some(nodes),
-                _ => None,
-            })
-            .flat_map(|nodes| nodes)
-            .collect::<HashSet<_>>();
-
-        let mut node_coords = streets
-            .iter()
-            .filter_map(|element| match element {
-                StreetElement::Node { id, lat, lon } => Some(StreetNode {
-                    osm_id: *id,
-                    lat: *lat,
-                    lon: *lon,
-                    index: 0,
-                }),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        // Sorting by longitude then latitude brings max abs node diff down
-        // under i16::MAX
-        node_coords.sort_by(|a, b| {
-            a.lon
-                .total_cmp(&b.lon)
-                .then_with(|| a.lat.total_cmp(&b.lat))
-        });
-        let lat_extremes = node_coords
-            .iter()
-            .map(|node| node.lat)
-            .minmax()
-            .into_option()
-            .expect("should be at least one node");
-        let lon_extremes = node_coords
-            .iter()
-            .map(|node| node.lon)
-            .minmax()
-            .into_option()
-            .expect("should be at least one node");
-        // (37.6876263, 37.8323305) (-122.514537, -122.3276982)
-        eprintln!("{lat_extremes:?} {lon_extremes:?}");
 
         writer.write_all(&lat_extremes.0.to_be_bytes())?;
         writer.write_all(&lat_extremes.1.to_be_bytes())?;
@@ -188,26 +219,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let nodes_size = writer.stream_position()?;
         // nodes take up 890280 bytes
         eprintln!("nodes take up {nodes_size} bytes");
-
-        let node_index_map = node_coords
-            .iter()
-            .filter_map(|entry| {
-                if referenced_nodes.contains(&entry.osm_id) {
-                    Some(entry)
-                } else {
-                    None
-                }
-            })
-            .zip(0i32..)
-            .map(|(node, index)| (node.osm_id, node.with_index(index)))
-            .collect::<HashMap<_, _>>();
-        // 222561 / 222561 nodes (max: 65535)
-        eprintln!(
-            "{} / {} nodes (max: {})",
-            node_index_map.len(),
-            node_coords.len(),
-            u16::MAX
-        );
 
         let mut way_count = 0;
         let mut way_node_count = 0;
@@ -244,7 +255,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             total_size,
             total_size - nodes_size
         );
-
+    }
+    {
         let streets_optimized2 = File::create("src/streets_optimized2.bin")?;
         let mut writer2 = BufWriter::new(streets_optimized2);
 
@@ -277,6 +289,27 @@ fn main() -> Result<(), Box<dyn Error>> {
             writer2.stream_position()?
         );
     }
+
+    let x_extremes = node_coords
+        .iter()
+        .map(|node| node.x())
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    let y_extremes = node_coords
+        .iter()
+        .map(|node| node.y())
+        .minmax()
+        .into_option()
+        .expect("should be at least one node");
+    // x=(-0.6806363166666667, -0.6795983233333334) y=(-0.22736193843536473, -0.2263450777733419)
+    eprintln!("x={x_extremes:?} y={y_extremes:?}");
+    // width=0.0010379933333333202 height=0.0010168606620228338
+    eprintln!(
+        "width={} height={}",
+        x_extremes.1 - x_extremes.0,
+        y_extremes.1 - y_extremes.0
+    );
 
     client.ensure(
         "data/train-lines.json",
