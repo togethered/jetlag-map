@@ -43,9 +43,7 @@ impl StreetNode {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let client = Ensurer::new();
-
+fn process_stations(client: &Ensurer) -> Result<(), Box<dyn Error>> {
     let stations = client
         .ensure(
             "data/train-stations.json",
@@ -84,6 +82,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 1, "PresidiGo;Muni": 1, "Tahoe Convoy": 1}
     eprintln!("{networks:?}");
 
+    Ok(())
+}
+
+fn process_streets(client: &Ensurer) -> Result<(), Box<dyn Error>> {
     let streets = client
         .ensure(
             "data/streets.json",
@@ -310,6 +312,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         x_extremes.1 - x_extremes.0,
         y_extremes.1 - y_extremes.0
     );
+
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let client = Ensurer::new();
+
+    process_stations(&client)?;
+    process_streets(&client)?;
 
     client.ensure(
         "data/train-lines.json",
